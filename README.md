@@ -1,4 +1,3 @@
----
 
 ## 🏗️ Azure Kubernetes (AKS) Architecture - Production Grade
 
