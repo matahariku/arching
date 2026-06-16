@@ -1,0 +1,341 @@
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         AZURE SUBSCRIPTION                               │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐   │
+│  │  RESOURCE GROUP 1: Management & CI/CD                             │   │
+│  │                                                                   │   │
+│  │  ┌──────────┐  ┌──────────────────┐  ┌─────────────┐              │   │
+│  │  │Kubernetes│  │Operational       │  │Azure Key    │              │   │
+│  │  │          │  │Insights          │  │Vault        │              │   │
+│  │  └──────────┘  └──────────────────┘  └─────────────┘              │   │
+│  │                                                                   │   │
+│  │  ┌──────────────┐  ┌─────────┐  ┌──────────┐                      │   │
+│  │  │Storage       │  │LBC      │  │PowerShell│                      │   │
+│  │  │Account       │  │(func()) │  │          │                      │   │
+│  │  └──────────────┘  └─────────┘  └──────────┘                      │   │
+│  └───────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐   │
+│  │  RESOURCE GROUP 2: Application Layer                              │   │
+│  │                                                                   │   │
+│  │                    ┌──────────────────┐                           │   │
+│  │  End Users ──────→ │Public Load       │                           │   │
+│  │                    │Balancer          │                           │   │
+│  │                    └────────┬─────────┘                           │   │
+│  │                             │                                     │   │
+│  │                    ┌────────▼─────────┐                           │   │
+│  │                    │Virtual Network   │                           │   │
+│  │                    └──┬───────────┬─-─┘                           │   │
+│  │                       │           │                               │   │
+│  │              ┌────────▼──┐  ┌─────▼────────┐                      │   │
+│  │              │Web App VM1│  │Web App VM2   │                      │   │
+│  │              │(Container)│  │(Container)   │                      │   │
+│  │              └─────┬─────┘  └──────┬───────┘                      │   │
+│  │                    │               │                              │   │
+│  │              ┌─────▼───────────────▼─────┐                        │   │
+│  │              │      SQL Database         │                        │   │
+│  │              └───────────────────────────┘                        │   │
+│  │                                                                   │   │
+│  │              ┌──────────────────────────┐                         │   │
+│  │              │   Pull Server (VM)       │                         │   │
+│  │              └──────────────────────────┘                         │   │
+│  │                                                                   │   │
+│  │              ┌──────────────────────────┐                         │   │
+│  │              │   Storage Account        │                         │   │
+│  │              └──────────────────────────┘                         │   │
+│  └───────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐   │
+│  │  CI/CD Pipeline                                                   │   │
+│  │  ┌─────┐    ┌──────┐                                              │   │
+│  │  │ GIT │───→│ VSIS │───→ Deploy to Resource Group 1               │   │
+│  │  └─────┘    └──────┘                                              │   │
+│  └───────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐   │
+│  │  Azure Active Directory ←→ Azure Key Vault                        │   │
+│  └───────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+==MODELE LA PREMIERE VERSION ==
+
+LEGEND:
+─────→ Data flow / Network traffic
+───→  CI/CD deployment
+←→   Bidirectional connection
+
+MONITORING (Operational Insights collects logs from):
+  • Web App VM1 & VM2
+  • Pull Server
+  • Kubernetes
+  • Storage Accounts
+
+
+---***---
+
+la version plus simple:
+
+
+┌─ AZURE SUBSCRIPTION ─────────────────────────────────────────┐
+│                                                              │
+│  [Admin/Operators]                                           │
+│       ↓                                                      │
+│  ┌─ RG1: Management ──────────────────────────────────────┐  │
+│  │  Kubernetes │ OpInsights │ KeyVault ← Azure AD         │  │
+│  │  Storage    │ LBC(func)  │ PowerShell                  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  [End Users] → LoadBalancer → VirtualNetwork                 │
+│                              ↓           ↓                   │
+│  ┌─ RG2: Application ─────────────────────────────────────┐  │
+│  │         WebApp VM1          WebApp VM2                 │  │
+│  │              ↓                   ↓                     |  │
+│  │         ┌─────────────────────────────┐                │  │
+│  │         │      SQL Database           │                │  │
+│  │         └─────────────────────────────┘                │  │
+│  │                                                        │  │
+│  │    Pull Server (VM)    Storage Account                 │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  [GIT] → [VSIS] → Deploy to RG1                              │
+└──────────────────────────────────────────────────────────────┘
+
+--***---
+
+Ce schéma illustre une solution cloud hybride à plusieurs niveaux.
+
+🧑💼 Acteur (Utilisateur)
+Acteur					    Rôle
+Utilisateurs finaux    			Utilisateurs finaux qui accèdent à l'application web
+Administrateurs/Opérateurs    		Équipe opérationnelle chargée de la gestion de l'infrastructure
+
+📦 Abonnement Azure (grand cadre en pointillés)
+Il s'agit du conteneur de plus haut niveau qui regroupe toutes les ressources. Tous les composants du diagramme relèvent d'un seul abonnement Azure.
+
+🔷 Groupe de ressources 1 — Couche de gestion et CI/CD (encadré du haut)
+Ce groupe de ressources contient les composants de gestion, de surveillance et de déploiement :
+
+	Kubernetes 🐳 — Orchestration des conteneurs pour les charges de travail plus complexes
+	Operational Insights (Log Analytics) 📊 — Collecte des journaux et des métriques provenant de divers composants (ligne bleue en pointillés vers les machines virtuelles, le serveur Pull, etc.) à des fins de surveillance et de dépannage
+	Azure Key Vault 🔑 — Stockage sécurisé des secrets, des clés et des identifiants. Connecté à Azure Active Directory pour l’authentification
+	Compte de stockage 💾 — Stockage de données (blobs, fichiers, etc.)
+	LBC (func()) ⚡ — Azure Function en tant que contrôleur d’équilibrage de charge, possibilités d’automatisation
+	PowerShell ⌨️ — Outil de script et d’automatisation
+	
+🔗 Intégration CI/CD (encadré en haut à droite)
+	GIT + VSIS (Visual Studio) → Déploiement vers le groupe de ressources 1. Il s’agit d’un pipeline CI/CD : le développeur pousse le code via Git, effectue la compilation dans VS, puis déploie sur Azure.
+
+---***---
+
+🔷 Groupe de ressources 2 — Couche applicative (encadré du bas)
+Il s'agit de la couche applicative qui dessert directement les utilisateurs finaux :
+
+Flux de trafic des utilisateurs finaux :
+
+Utilisateurs finaux → Équilibreur de charge public → Réseau virtuel → Machines virtuelles front-end de l'application web
+
+---***---
+
+Équilibreur de charge public ⚖️ 
+	— Reçoit le trafic provenant d’Internet et le répartit entre 2 machines virtuelles front-end (haute disponibilité)
+Réseau virtuel 🌐 
+	— Réseau privé reliant toutes les machines virtuelles
+2 machines virtuelles front-end d’application web (conteneurs dans des machines virtuelles) 🖥️ 
+	— Deux machines virtuelles exécutant des conteneurs d’application web. Il y a deux instances pour assurer la redondance et l’équilibrage de charge
+Serveur de pull (machine virtuelle) 📦 
+	— Serveur permettant de récupérer et de gérer les configurations ou les déploiements (il peut s’agir d’un serveur de pull DSC ou d’un serveur d’artefacts)
+Compte de stockage 💾 
+	— Emplacement de stockage des données/artefacts, accessible par les machines virtuelles (ligne pointillée noire)
+Base de données SQL 🗄️
+        — Base de données relationnelle, accessible par les machines virtuelles d’applications web (ligne verte)
+
+
+---***---
+
+🟢 Ligne verte = Flux de données vers SQL
+Les machines virtuelles d'applications web lisent et écrivent des données dans la base de données SQL.
+
+⚫ Ligne pointillée noire = Accès au stockage
+Les machines virtuelles accèdent au compte de stockage pour les fichiers et les artefacts.
+
+🔵 Ligne pointillée bleue = Surveillance
+Operational Insights collecte les journaux de tous les composants à des fins de surveillance.
+
+---***---
+
+Résume architecture :
+
+[Developer: GIT + VS]
+        ↓ (CI/CD Deploy)
+[Resource Group 1: Management]
+  ├── Kubernetes
+  ├── Key Vault ←→ Azure AD
+  ├── Operational Insights (All monitor )
+  └── Storage + Automation (Func + PowerShell)
+
+[End Users]
+    ↓
+[Public Load Balancer]
+    ↓
+[Resource Group 2: Application]
+  ├── VM Web App 1 ──→ SQL
+  ├── VM Web App 2 ──→ SQL
+  ├── Pull Server
+  └── Storage Account
+
+
+---***---
+
+💡 Conclusion
+Cette architecture est une application à trois niveaux hébergée sur des machines virtuelles Azure, comprenant :
+
+Haute disponibilité 
+	— 2 machines virtuelles front-end + équilibreur de charge
+Sécurité 
+	— Key Vault + Azure AD
+Surveillance 
+	— Operational Insights
+CI/CD 	
+	— Git + Visual Studio
+Calcul hybride 
+	— Machines virtuelles + Kubernetes
+
+
+==========================
+
+
+🛠️ Mise en œuvre d'Azure étape par étape (bases)
+Avant de nous lancer dans Kubernetes, nous devons d'abord mettre en place les bases Azure conformément au schéma. 
+
+Voici les étapes logiques :
+
+Étape 1 : Identité, gouvernance et groupes de ressources
+
+	Azure Active Directory (Entra ID) : créez des utilisateurs/groupes pour les administrateurs et les utilisateurs finaux. Configurez l'accès conditionnel si nécessaire.
+	Groupes de ressources : créez deux groupes de ressources distincts conformément au schéma :
+		rg-management-cicd (pour K8s, KeyVault, la surveillance et l’automatisation)
+		rg-app-production (pour les machines virtuelles, l’équilibreur de charge, SQL et le stockage)
+	Contrôle d’accès basé sur les rôles (RBAC) : attribuez le rôle de « Contributeur » aux administrateurs et celui de « Lecteur » aux opérateurs dans leurs groupes de ressources respectifs.
+
+Étape 2 : Réseau (réseau virtuel)
+
+	VNet : Créez un réseau virtuel dans rg-app-production (par exemple : vnet-app-prod avec un CIDR 10.0.0.0/16).
+	Sous-réseaux : Divisez-le en plusieurs sous-réseaux :
+		snet-lb (pour l’équilibreur de charge public)
+		snet-app (pour les machines virtuelles d’applications Web et le serveur Pull)
+	snet-data (pour la base de données SQL – point de terminaison privé)
+	NSG (groupes de sécurité réseau) : 
+		créez des règles. snet-lb peut accepter les ports 80/443 depuis Internet. 
+		snet-app ne peut accepter que le trafic provenant de snet-lb. snet-data ne peut accepter que le port 1433 (SQL) provenant de snet-app.
+
+Étape 3 : Couche de sécurité et de gestion (gestion des groupes de ressources)
+
+	Azure Key Vault : Créez un Key Vault. Enregistrez-y la chaîne de connexion SQL, le mot de passe de la machine virtuelle et le certificat TLS. Ne les intégrez pas directement dans le script !
+	Espace de travail Log Analytics (Operational Insights) : créez cet espace de travail. Nous installerons ensuite l’agent Azure Monitor sur toutes les machines virtuelles et tous les clusters K8s afin d’y envoyer les journaux.
+	Compte de stockage (gestion) : créez-le pour stocker les fichiers d’état (si vous utilisez Terraform) ou les scripts d’automatisation.
+
+Étape 4 : Couche de données et de stockage (RG App)
+	
+	Azure SQL Database : Déployez Azure SQL (il peut s’agir d’une base de données unique ou d’un pool élastique). Important : désactivez l’accès au réseau public, utilisez Private Link/Endpoint afin que SQL ne soit accessible qu’à partir de l’intérieur du réseau virtuel (snet-data). Enregistrez les identifiants dans Key Vault.
+	Compte de stockage (App) : Créez-le pour stocker les artefacts, les journaux d’application ou les fichiers téléchargés par les utilisateurs.
+
+Étape 5 : Couche de calcul (application RG)
+	
+	Équilibreur de charge public : Créez-le dans snet-lb. Configurez un test de santé (par exemple, vérification du port 8080) et les règles d'équilibrage de charge.
+Machines virtuelles (front-end de l’application web) : créez 2 machines virtuelles (ou VMSS – Virtual Machine Scale Sets pour l’auto-scaling) dans snet-app. Installez Docker dessus (car le schéma indique « conteneurs dans la machine virtuelle »).
+	Serveur de récupération (VM) : Créez une VM dans snet-app. Il peut s’agir d’un serveur destiné à stocker des images Docker (registre privé simple) ou d’un serveur de récupération DSC pour la gestion des configurations.
+	Intégration : Assurez-vous que ces VM se voient attribuer une identité gérée, et que cette identité gérée dispose d’un accès de type « Key Vault Secrets User » dans Azure Key Vault.
+
+Étape 6 : CI/CD et automatisation
+	Entité de service : Créez une entité de service dans Azure AD destinée à être utilisée par Git/GitHub Actions ou Azure DevOps.
+	Fonction Azure (LBC) et PowerShell : Créez une application de fonction. Le script PowerShell qu’elle contient sera chargé de l’automatisation, par exemple : l’auto-scaling, l’auto-correction ou le nettoyage des ressources.
+
+---***---
+
+🚀 Prochaine étape : approfondissement de Kubernetes
+Les bases d’Azure sont désormais en place. Maintenant, comme tu l’as demandé, nous allons approfondir la partie consacrée à Kubernetes.
+
+Avant de commencer, j’ai besoin de savoir une chose pour que mes explications soient pertinentes :
+Avec quoi comptes-tu déployer Kubernetes ?
+
+	AKS (Azure Kubernetes Service) – Entièrement géré, fortement recommandé pour la production.
+	K8s autogéré sur une VM – Tu installes toi-même kubeadm dans la VM (plus compliqué, mais contrôle total).
+	Via l’Infrastructure as Code (IaC) – Tu utilises Terraform.
+
+=======================
+
+Notre hypothèse : nous utilisons AKS (Azure Kubernetes Service) car il s'agit de la norme du secteur sur Azure, et nous effectuons le déploiement via l'Infrastructure as Code (Terraform/Bicep).
+
+Analysons cela en détail !
+
+1. Déploiement d’AKS et architecture du pool de nœuds
+
+Sur le schéma, Kubernetes se trouve dans le groupe de ressources 1 (Management). 
+Mais d’un point de vue architectural réseau, le pool de nœuds AKS doit être intégré au réseau virtuel de l’application (rg-app-production) afin de permettre une communication rapide et sécurisée avec SQL et le stockage.
+
+Plan de contrôle : géré par Microsoft (caché), nous ne payons pas et ne voyons pas les machines virtuelles.
+
+Pools de nœuds :
+	Pool système : au moins 3 nœuds (taille Standard_DS2_v2 ou Standard_D4s_v3). Uniquement destiné à exécuter les pods système (CoreDNS, kube-proxy, pilotes CSI).
+	Pool utilisateur : destiné à exécuter les charges de travail de votre application web. Le Cluster Autoscaler peut être activé.
+
+2. Réseau K8s (Essentiel pour l’architecte)
+C’est la partie qui pose le plus souvent problème. Pour une production sur Azure, n’utilisez pas Kubenet. Utilisez Azure CNI.
+
+	Azure CNI (Container Networking Interface) : chaque pod dans K8s recevra une adresse IP native du réseau virtuel Azure.
+		Avantage : les pods peuvent communiquer directement avec Azure SQL (via Private Link) et le compte de stockage sans avoir besoin de NAT ni de routage complexe. Les NSG (Network Security Group) peuvent être directement appliqués au niveau des pods.
+		Configuration : créez un sous-réseau dédié « snet-aks » (par exemple /22 ou /23, car Azure CNI consomme beaucoup d’adresses IP).
+	Politique réseau : activez Azure Network Policy ou Calico au niveau du cluster pour contrôler le trafic Est-Ouest (entre les pods au sein du cluster).
+
+3. Contrôleur d’entrée (gestion du trafic entrant)
+Le schéma illustre un équilibreur de charge public. Dans AKS, deux options principales s’offrent à vous pour la gestion de l’entrée :
+
+	Option A : Contrôleur d’entrée NGINX (Standard). Déploiement via Helm. Utilise l’équilibreur de charge public Azure intégré à AKS. C’est une bonne solution, couramment utilisée, mais vous devez gérer vous-même le certificat SSL (cert-manager).
+	Option B : AGIC (Application Gateway Ingress Controller) – Fortement recommandé pour les architectes.
+		AGIC est un module complémentaire d’AKS qui connecte directement AKS à Azure Application Gateway (équilibreur de charge de couche 7).
+		Avantages : déchargement SSL/TLS sur Application Gateway, WAF (pare-feu d’applications web) intégré à Azure, et routage basé sur l’hôte/le chemin d’accès très puissant.
+
+
+4. Helm & GitOps (Déploiement)
+Comme le diagramme mentionne Git, ne procédez pas à un déploiement manuel à l’aide de `kubectl apply` ou `helm install` depuis votre ordinateur portable.
+
+	Utilisez les Helm Charts pour packager votre application web.
+	Pour l’orchestration, utilisez ArgoCD ou FluxCD (déploiement au sein d’AKS). ArgoCD surveillera votre dépôt Git et synchronisera automatiquement le cluster K8s en cas de modification des valeurs Helm. C’est ce qu’on appelle le GitOps.
+
+5. Intégration d’Azure Key Vault (niveau de sécurité « Dewa »)
+
+En tant qu’architecte, il est INTERDIT de stocker des secrets (mots de passe de base de données, clés API) dans les valeurs Helm ou dans des secrets K8s classiques (car ils ne sont encodés qu’en base64 et sont donc faciles à décoder).
+
+Utilisez le pilote CSI « Azure Key Vault Provider for Secrets Store » + Workload Identity.
+
+	Fonctionnement : les pods K8s ne se « connectent » pas à l’aide d’un mot de passe. Ils utilisent une identité gérée (Workload Identity) à laquelle Azure AD fait confiance.
+	Mise en œuvre : dans le fichier YAML de déploiement, vous montez le secret provenant de Key Vault directement en tant que volume au sein du pod, ou vous le synchronisez automatiquement en tant que secret K8s.
+	Résultat : aucune information d’identification n’est accessible aux développeurs ni au pipeline CI/CD.
+
+
+6. Intégration d'Azure SQL (couche de données)
+	
+Comment les pods dans AKS se connectent-ils à Azure SQL hébergé dans snet-data ?
+
+	Réseau : Azure SQL utilise un point de terminaison privé. Comme AKS utilise Azure CNI, les pods disposent d'une adresse IP VNet. Assurez-vous que le groupe de sécurité de réseau (NSG) dans snet-data autorise le port 1433 depuis le sous-réseau snet-aks.
+	Authentification (très important) : n’utilisez pas de nom d’utilisateur/mot de passe SQL dans la chaîne de connexion ! Utilisez l’authentification Microsoft Entra ID (Azure AD) avec une identité gérée.
+		Le pod utilise une identité de charge de travail.
+		La chaîne de connexion dans l’application ne contient que : Server=tcp:mydb.database.windows.net;Database=mydb;Authentication=Active Directory Managed Identity;
+		Dans Azure SQL, créez un utilisateur à partir de cette identité : CREATE USER [my-app-identity] FROM EXTERNAL PROVIDER;
+
+
+📝 Résumé de l'architecture K8s pour votre documentation
+Si vous souhaitez intégrer ces informations dans un document de conception (HLD/LLD), voici les points clés :
+
+[AKS Cluster Architecture]
+- Compute: AKS with Azure CNI (Dynamic IP allocation recommended)
+- Node Pools: System (3 nodes) + User (Autoscaled)
+- Ingress: Application Gateway Ingress Controller (AGIC) with WAF enabled
+- Security: 
+    - Azure Key Vault CSI Driver for secret injection
+    - Workload Identity for passwordless auth to Azure Services
+- Networking:
+    - Private Cluster (API server only accessible via Private Link) - *Optional but recommended*
+    - Azure Network Policies for East-West traffic control
+- CI/CD: GitOps model using ArgoCD syncing Helm charts from Git repo

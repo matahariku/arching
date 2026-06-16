@@ -1,0 +1,1434 @@
+MODELE LA DEUXIEME VERSION :
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           AZURE SUBSCRIPTION                                        │
+│                                                                                     │
+│   ┌──────────────┐              ┌─────────────────┐         ┌──────┐  ┌──────────┐  │
+│   │   Admin/     │              │   AZURE ACTIVE  │◀────────│ Git  │  │  VSIS/   │  │
+│   │  Operators   │─────────────▶│   DIRECTORY     │         └──┬───┘  │ DevOps   │  │
+│   └──────────────┘              └────────┬────────┘            │      └────┬─────┘  │
+│                                          │                     │           │        │
+│   ╔══════════════════════════════════════╪═══════════════════════════════════════╗  │
+│   ║  RESOURCE GROUP: MANAGEMENT          │                                       ║  │
+│   ║                                      ▼                                       ║  │
+│   ║  ┌────────────┐  ┌───────────────┐  ┌──────────────┐  ┌──────────────────┐   ║  │
+│   ║  │ Kubernetes │  │ Operational   │  │  Azure Key   │  │ Storage Account  │   ║  │
+│   ║  │            │  │   Insights    │◀─┤    Vault     │  │  (Management)    │   ║  │
+│   ║  └──────┬─────┘  └───────┬───────┘  └──────┬───────┘  └──────────────────┘   ║  │
+│   ║         │                │                 │                                 ║  │
+│   ║         └────────────────┴─────────────────┘                                 ║  │
+│   ║                          │                                                   ║  │
+│   ║                   ┌──────┴──────┐                                            ║  │
+│   ║                   │ DSC/PowerShell│ ─────── Config  ───────                  ║  │
+│   ║                   └─────────────┘                          │                 ║  │
+│   ╚════════════════════════════════════════════════════════════╪════════════════-╝  │
+│                                                                │                    │
+│   ╔════════════════════════════════════════════════════════════╪════════════════╗   │
+│   ║  RESOURCE GROUP: APPLICATION                               │                ║   │
+│   ║                                                            ▼                ║   │
+│   ║                                                    ┌───────────────┐        ║   │
+│   ║  ┌──────────┐    ┌─────────────────┐               │ Pull Server   │        ║   │
+│   ║  │   End    │───▶│  Public Load    │               │     (VM)      │        ║   │
+│   ║  │  Users   │    │    Balancer     │               └───┬───────────┘        ║   │
+│   ║  └──────────┘    └────────┬────────┘                   │                    ║   │
+│   ║                           │                    ┌───────┘                    ║   │
+│   ║                  ┌────────┴────────┐           │                            ║   │
+│   ║                  │  Virtual Network│◀──────────┘                            ║   │
+│   ║                  │     (VNet)      │                                        ║   │
+│   ║                  └────────┬────────┘                                        ║   │
+│   ║        ┌──────────────────┼──────────────────┐                              ║   │
+│   ║        │                  │                  │                              ║   │
+│   ║  ┌─────▼──────┐     ┌─────▼──────┐    ┌──────▼──────┐                       ║   │
+│   ║  │ Web App    │     │ Web App    │    │   Storage   │                       ║   │
+│   ║  │ Frontend 1 │◀───▶│ Frontend 2 │    │  Account    │                       ║   │
+│   ║  │(Container) │     │(Container) │    │ (App Data)  │                       ║   │
+│   ║  └──────┬─────┘     └─────┬──────┘    └─────────────┘                       ║   │
+│   ║         │                 │                                                 ║   │
+│   ║         └─────────────────┘                                                 ║   │
+│   ║                   │                                                         ║   │
+│   ╚═══════════════════╪═══════════════════════════════════════════════════════ ═╝   │
+│                       │                                                             │
+│              ┌────────▼──────────┐                                                  │
+│              │   Azure SQL DB    │                                                  │
+│              │   (Database)      │                                                  │
+│              └───────────────────┘                                                  │
+└──────────────────────────────────────────────────────────────────────────────────── ┘
+
+LEGENDA KONEKSI:
+───────────────  Network Traffic (End Users)
+─── ─── ─── ───  Monitoring/Logging (to Operational Insights)
+──▶  ──▶       Configuration (DSC/Pull Server)
+════▶          Authentication (Azure AD)
+
+--**--
+
+la version plus simple:
+
+AZURE SUBSCRIPTION
+┌────────────────────────────────────────────────────────────────────────┐
+│  Admin/Ops ──▶ Azure AD ◀── Git/VSIS                                   │
+├────────────────────────────────────────────────────────────────────────┤
+│  [RG: MANAGEMENT]                                                      │
+│  ┌──────────┐ ┌───────── ─┐ ┌──────────┐ ┌──────────┐                  │
+│  │Kubernetes│ │Operational│ │ Key Vault│ │ Storage  │                  │
+│  └────┬─────┘ │Insights   │ └────┬─────┘ │(Mgt)     │                  │
+│       │       └────┬──── ─┘      │       └──────────┘                  │
+│       │            │             │                                     │
+│       └────────────┴─────────── ─┘                                     │
+│                    │                                                   │
+│              DSC/PowerShell ───▶ Pull Server (VM)                      │
+└────────────────────┼───────────────────────────────────────────────────┘
+                     │
+┌────────────────────┼───────────────────────────────────────────────────┐
+│  [RG: APPLICATION] │                                                   │
+│                    ▼                                                   │
+│  Users ──▶ Load Balancer ──▶ VNet ──▶ [WebVM1] ◀──▶ [WebVM2]           │
+│                                        │    └───────┘    │             │
+│                                        └─────────────────┘             │
+│                                                │                       │
+│                                        ┌───────▼───────┐               │
+│                                        │ Storage (App) │               │
+│                                        └───────┬───────┘               │
+│                                                │                       │
+│                                        ┌───────▼───────┐               │
+│                                        │ Azure SQL DB  │               │
+│                                        └───────────────┘               │
+└────────────────────────────────────────────────────────────────────────┘
+
+Il s'agit d'une architecture à trois niveaux (présentation, application, données) complétée par une couche de gestion adéquate. 
+Elle convient aux applications de production qui exigent une disponibilité élevée et une sécurité rigoureuse.
+
+
+🔧 Principaux composants
+
+1. DevOps et contrôle de version (en haut à droite)
+
+	Git : lieu de stockage du code de l’application (contrôle de version)
+	VSIS (Visual Studio Team Services/Azure DevOps) : pipeline CI/CD. 
+	C’est à partir de là que le code est déployé sur une machine virtuelle ou Kubernetes
+
+2. Identité et sécurité
+	Azure Active Directory : authentification pour les administrateurs et les utilisateurs finaux (SSO)
+	Azure Key Vault : « coffre-fort numérique » pour stocker :
+		chaîne de connexion à la base de données
+		clés API
+		certificats
+		(Pour éviter de les coder en dur dans l’application !)
+
+3. Gestion et surveillance (groupe de ressources en haut)
+	Operational Insights (désormais Azure Monitor/Log Analytics) :
+		collecte des journaux de toutes les machines virtuelles et applications
+		surveillance des performances, des erreurs et des alertes
+	DSC (Desired State Configuration) + PowerShell :
+		Automatisation de la configuration des serveurs. Par exemple : « Toutes les machines virtuelles doivent installer la version X d’IIS, avec le paramètre Y »
+		Serveur de configuration : les machines virtuelles situées en aval « récupèrent » régulièrement la configuration à partir de ce serveur
+	Kubernetes : orchestration des conteneurs (en cas de microservices ou de backend conteneurisé)
+
+4. Couche applicative (groupe de ressources sous-jacent – Core)
+
+	Équilibreur de charge public :
+		Point d’entrée du trafic provenant des utilisateurs finaux
+		Répartition de la charge entre 2 machines virtuelles d’application web (haute disponibilité)
+		Si une machine virtuelle est hors service, le trafic est automatiquement redirigé vers l’autre
+	Front-end de l’application web (2 machines virtuelles) :
+		L’application s’exécute dans des conteneurs sur les machines virtuelles
+		Configuration redondante (2 instances) pour éviter tout point de défaillance unique
+		Connectées à un réseau virtuel (VNet) pour l’isolation réseau
+
+5. Couche de données
+	Base de données Azure SQL : base de données principale (PaaS, gérée par Azure)
+	Compte de stockage : pour stocker les fichiers téléchargés, le stockage de blobs, ou queue messages.
+
+
+---***---
+
+🔄 Flux de travail du système=
+
+A. Accès de l'utilisateur final (flux vert/bleu)
+	L'utilisateur accède au site web → vers le répartiteur de charge public
+	Le répartiteur de charge sélectionne l'une des machines virtuelles (par exemple VM1 ou VM2) → Round Robin
+	La machine virtuelle exécute l'application web conteneurisée
+	L'application lit/écrit vers :
+		Azure SQL (données transactionnelles)
+		Compte de stockage (téléchargements de fichiers)
+		Key Vault (récupération des secrets si nécessaire)
+
+B. Gestion administrative (flux de gestion)
+	L’administrateur se connecte via Azure AD (authentification)
+	Operational Insights : surveillance en temps réel de toutes les métriques des machines virtuelles et de l’application
+	DSC/PowerShell : envoi de la configuration vers le serveur de pull
+	La machine virtuelle de l’application web « vérifie » régulièrement auprès du serveur de pull : « Y a-t-il une mise à jour de configuration ? » → Application automatique le cas échéant
+
+C. Flux de déploiement
+	Le développeur envoie le code vers Git
+	VSIS/Azure DevOps déclenche la compilation → déploiement vers une machine virtuelle ou Kubernetes
+	La mise à jour s’effectue sans interruption de service (mise à jour progressive via l’équilibreur de charge)
+
+
+💡 Avantages de cette architecture=
+
+✅ Haute disponibilité : 2 machines virtuelles + équilibreur de charge = disponibilité élevée
+✅ Sécurité : Key Vault (gestion des secrets) + Azure AD + isolation par réseau virtuel
+✅ Facilité de maintenance : DSC assure la cohérence de la configuration des serveurs (fini le « ça marche sur ma machine »)
+✅ Observabilité : Operational Insights offre une visibilité totale sur les performances
+✅ Évolutivité : possibilité de passer facilement à 3, 4 ou 5 machines virtuelles ou de migrer vers Kubernetes en cas d’augmentation du trafic
+
+
+
+⚠️ Remarque concernant la modernisation=
+
+Certains composants de cette illustration utilisent des termes obsolètes :
+
+	VSIS s'appelle désormais Azure DevOps
+	Operational Insights fait désormais partie d’Azure Monitor
+	Le serveur DSC Pull a été largement remplacé par Azure Policy ou Ansible/Puppet/Chef, mais reste valable pour les configurations hybrides héritées
+
+Conclusion : il s’agit d’une architecture solide pour les applications de production qui nécessitent une fiabilité et une sécurité de niveau entreprise. Sa mise en place est certes complexe, mais sa maintenance s’avérera bien plus aisée à l’avenir.
+
+=====================************************================
+
+
+🗺️ ROADMAP IMPLEMENTASI STEP-BY-STEP
+Fase 1: Foundation (Identity & Network)
+
+# Step 1: Setup Azure AD Tenant & RBAC
+
+az login
+az ad sp create-for-rbac --name "k8s-admin" --role="Contributor"
+
+# Step 2: Resource Group segregation (penting buat governance)
+
+az group create --name rg-management --location southeastasia
+az group create --name rg-application --location southeastasia
+az group create --name rg-kubernetes --location southeastasia
+
+# Step 3: Virtual Network (VNet) design - K8s need a big  subnet
+
+az network vnet create \
+  --name vnet-prod \
+  --resource-group rg-application \
+  --address-prefix 10.0.0.0/8 \
+  --subnet-name subnet-aks \
+  --subnet-prefix 10.240.0.0/16
+_______
+
+Fase 2: Management Layer (DSC + Monitoring)
+
+# Step 4: Azure Key Vault (untuk simpan K8s secrets, container registry creds)
+az keyvault create --name kv-prod-secrets --resource-group rg-management
+
+# Step 5: Log Analytics (Operational Insights modern)
+az monitor log-analytics workspace create \
+  --resource-group rg-management \
+  --name log-aks-prod
+
+# Step 6: Storage Account untuk diagnostics
+
+az storage account create --name stk8sdiag2024 --resource-group rg-management
+
+______
+
+Fase 3: Kubernetes Layer (AKS) - Fokus Utama Lu
+
+# Step 7: Create AKS dengan Azure AD Integration (RBAC enabled)
+
+az aks create \
+  --resource-group rg-kubernetes \
+  --name aks-prod-cluster \
+  --enable-aad \
+  --enable-azure-rbac \
+  --network-plugin azure \
+  --vnet-subnet-id "/subscriptions/.../subnet-aks" \
+  --node-count 3 \
+  --enable-cluster-autoscaler \
+  --min-count 3 \
+  --max-count 10 \
+  --attach-acr mycontainerregistry \
+  --workspace-resource-id "/subscriptions/.../log-aks-prod"
+
+# Step 8: Enable Ingress Controller (NGINX or Application Gateway)
+
+az aks enable-addons \
+  --resource-group rg-kubernetes \
+  --name aks-prod-cluster \
+  --addons ingress-appgw \
+  --appgw-name agic-prod
+
+# Step 9: Connect kubectl
+
+az aks get-credentials --resource-group rg-kubernetes --name aks-prod-cluster
+Fase 4: Application Layer Integration
+Bash
+
+# Step 10: Azure SQL dengan Private Endpoint (biar aman dari K8s)
+
+az sql server create --name sql-prod --resource-group rg-application
+az sql db create --server sql-prod --name appdb
+
+# Step 11: Storage Account untuk persistent volumes K8s
+
+az storage account create --name stak8spv --resource-group rg-application
+
+# Step 12: Konfigurasi External Secrets Operator (ambil dari Key Vault ke K8s)
+
+helm repo add external-secrets https://charts.external-secrets.io
+helm install external-secrets external-secrets/external-secrets
+
+=================
+
+
+Réponse courte : l'AZ-104  Vs à l'AZ-305
+
+Aspect    		AZ-104 (Administrateur)						          AZ-305 (Architecte de solutions)
+Approche    		« Comment déployer ? »    					          « Pourquoi choisir cette architecture ? »
+Réseau    		VNet, NSG, équilibreur de charge — indispensable pour le CNI d’AKS        Architecture en étoile, gestion du trafic, conception de la sécurité
+Identité 	        Azure AD, RBAC, identité gérée — essentiel pour l’authentification AKS    Gouvernance, architecture Zero Trust
+Pertinence pour K8s	⭐⭐⭐⭐⭐ Configuration d’AKS, réseau, intégration du stockage  	  ⭐⭐⭐ Conception de clusters multiples, reprise après sinistre, maillage hybride
+Pour vous    		Indispensable — vous devrez dépanner le réseau AKS au quotidien    	  Niveau supérieur — conception de clusters à l’échelle de l’entreprise
+
+
+==================
+
+Feuille de route de certification pour les ingénieurs K8s Azure :
+
+Mois 1-2 : AZ-104 (Administrateur Azure)
+    ↓
+    ├─ Thèmes principaux : réseau virtuel, Azure AD, RBAC, stockage, calcul
+    └─ Raison : K8s sur Azure (AKS) = abstraction au-dessus de la couche réseau d’Azure
+    
+Mois 3-4 : CKA (Certified Kubernetes Administrator) 
+    ↓
+    ├─ Thèmes principaux : exploitation pure de K8s
+    └─ Raison : compétences fondamentales en tant qu’ingénieur K8s
+    
+Mois 5-6 : AZ-305 (Solutions Architect)
+    ↓
+    ├─ Thèmes principaux : conception hybride (VM + AKS), sécurité, optimisation des coûts
+    └─ Pourquoi : tu seras capable de concevoir une architecture de bout en bout comme celle illustrée ci-dessus
+    
+
+Facultatif : AZ-400 (DevOps) — si tu gères également le CI/CD
+	Pourquoi ne pas commencer directement par l’AZ-305 ?
+	Tu pourrais tout à fait commencer directement par l’AZ-305, mais il y aurait des lacunes dans les domaines suivants :
+
+Azure CNI vs Kubenet — tu dois comprendre l’intégration des réseaux virtuels (AZ-104)
+Identité gérée — comment AKS accède à Key Vault (AZ-104)
+NSG et équilibreur de charge — débogage des problèmes de communication entre les pods
+
+L’AZ-305 enseigne « comment choisir entre App Gateway et NGINX Ingress », tandis que l’AZ-104 enseigne « comment configurer le sous-réseautage pour qu’App Gateway puisse communiquer avec AKS ».
+
+==================
+
+🚀 ANALYSE APPROFONDIE : KUBERNETES DANS CETTE ARCHITECTURE
+
+Puisque je me concentres sur K8s, voici la liste des points à maîtriser pour la mise en œuvre sur Azure :
+
+1. Architecture réseau (le plus crucial)
+
+# Configuration d'AKS avec Azure CNI (indispensable pour les entreprises)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-cni-config
+data:
+  # Intégration VNet — Les pods obtiennent directement une adresse IP du sous-réseau Azure
+  # Ils peuvent ainsi communiquer directement avec Azure SQL, le stockage et les machines virtuelles
+
+
+Point clé : Sur l’image ci-dessus, le cluster K8s doit pouvoir communiquer avec :
+
+Azure SQL (point de terminaison privé)
+Compte de stockage (montage de blobs)
+Anciennes machines virtuelles (s’il reste des environnements hérités)
+
+
+2. Intégration de la sécurité
+
+# 1. Workload Identity (méthode moderne, remplace l’identité du pod)
+az aks update --resource-group rg-kubernetes \
+  --name aks-prod-cluster \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+# 2. Azure Policy pour K8s (Gatekeeper)
+az aks enable-addons --addons azure-policy
+# Permet d’imposer : « Les conteneurs ne doivent pas s’exécuter en tant que root », « La balise cost-center doit être présente »
+
+
+3. Pile de surveillance
+Vous devez intégrer AKS à Operational Insights (Azure Monitor) comme indiqué dans l'image :
+
+# Container Insights (journaux et métriques de K8s)
+
+az aks enable-addons --resource-group rg-kubernetes \
+  --name aks-prod-cluster \
+  --addons monitoring \
+  --workspace-resource-id $LOG_ANALYTICS_ID
+
+==================
+
+💡 CONSEILS PRATIQUES POUR TOI
+En tant qu'ingénieur K8s travaillant sur Azure :
+
+	L'AZ-104 est la base — ne la néglige pas, le réseau Azure est différent de celui sur site
+	Concentrez-vous sur « Azure Kubernetes Service (AKS) » — cela représente 70 % de votre travail
+	Apprenez à maîtriser Azure AD Workload Identity — c’est le pont entre les comptes de service K8s et les ressources Azure (Key Vault, SQL, Storage)
+	ArgoCD/Flux sur AKS — pour GitOps (remplace le serveur Pull DSC de l’image précédente, car les K8s modernes utilisent GitOps)
+
+
+Priorité des certifications :
+
+	AZ-104 (indispensable pour l’exploitation d’Azure)
+	CKA (pour valider tes compétences K8s)
+	AZ-305 (pour passer au niveau supérieur en tant qu’ingénieur ou architecte de plateforme)
+
+Mon but CKA dans Azure !!
+
+=================
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                    KUBERNETES ARCHITECTURE DEEP DIVE (AKS)                          │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  LAYER 1: INFRASTRUCTURE (Azure Resources)                                          │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │  VNet: 10.0.0.0/8                                                           │    │
+│  │  ├── Subnet-AKS: 10.240.0.0/16 (Azure CNI - Pod IPs from here)              │    │
+│  │  ├── Subnet-AppGW: 10.0.1.0/24 (Ingress)                                    │    │
+│  │  └── Subnet-Private: 10.0.2.0/24 (SQL Private Endpoint)                     │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                              │                                                      │
+│                              ▼                                                      │
+│  LAYER 2: CONTROL PLANE (Managed by Azure)                                          │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │  API Server │ etcd │ Controller Manager │ Scheduler                         │    │
+│  │  (Lu gak lihat ini, Azure yang manage - Master nodes gratis)                │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                              │                                                      │
+│                              ▼                                                      │
+│  LAYER 3: WORKER NODES (VMSS - Virtual Machine Scale Sets)                          │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                       │    │
+│  │  │   Node-0     │  │   Node-1     │  │   Node-2     │  (System + User pools)│    │
+│  │  │ 10.240.0.4   │  │ 10.240.0.5   │  │ 10.240.0.6   │                       │    │
+│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                       │    │
+│  │         │                 │                 │                               │    │
+│  │  ┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐                        │    │
+│  │  │ kube-proxy  │   │ kube-proxy  │   │ kube-proxy  │  (iptables/IPVS)       │    │
+│  │  │ kubelet     │   │ kubelet     │   │ kubelet     │                        │    │
+│  │  │ Azure CNI   │   │ Azure CNI   │   │ Azure CNI   │  (CNI Plugin)          │    │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘                        │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│           │                    │                    │                               │
+│           ▼                    ▼                    ▼                               │
+│  LAYER 4: PODS (Container Runtime: containerd)                                      │
+│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐                          │
+│  │ Pod: Web-1  │      │ Pod: Web-2  │      │ Pod: API-1  │                          │
+│  │ IP:10.240.0 │      │ IP:10.240.0 │      │ IP:10.240.0 │                          │
+│  │  │          │      │  │          │      │  │          │                          │
+│  │  ▼          │      │  ▼          │      │  ▼          │                          │
+│  │ Container   │      │ Container   │      │ Container   │                          │
+│  │ (Nginx)     │      │ (Nginx)     │      │ (Node.js)   │                          │
+│  └──────┬──────┘      └─────────────┘      └──────┬──────┘                          │
+│         │                                         │                                 │
+│         └──────────────┬──────────────────────────┘                                 │
+│                        ▼                                                            │
+│  LAYER 5: NETWORKING & SERVICE MESH                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────── ──┐   │
+│  │  Service (ClusterIP)  │  Ingress Controller  │  Network Policy (Calico)      │   │
+│  │  10.0.100.0/24        │  (AppGW/NGINX)       │  (East-West traffic control)  │   │
+│  └───────────────────────────────────────────────────────────────────────────── ┘   │
+│                        │                                                            │
+│                        ▼                                                            │
+│  LAYER 6: EXTERNAL INTEGRATION                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │
+│  │ Azure Key    │  │ Azure SQL    │  │ Storage      │  │ Operational  │             │
+│  │ Vault (CSI)  │  │ (Private     │  │ Account      │  │ Insights     │             │
+│  │              │  │  Endpoint)   │  │ (Blob CSI)   │  │ (Container   │             │
+│  │ Secrets/     │  │              │  │              │  │  Insights)   │             │
+│  │ Certs        │  │ mssql://     │  │ PV/PVC       │  │ Log Analytics│             │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+🔥 PARTIE 1 : RÉSEAU KUBERNETES (Azure CNI en détail)
+
+Pourquoi Azure CNI (et non Kubenet) ?
+Dans l’architecture d’entreprise illustrée ci-dessus, l’utilisation d’Azure CNI est obligatoire pour les raisons suivantes :
+
+	Les pods reçoivent une adresse IP directement du réseau virtuel Azure → 
+		Ils peuvent communiquer directement avec le point de terminaison privé SQL sans NAT
+	Politiques réseau → 
+		Possibilité de segmenter le trafic entre les espaces de noms (l’environnement de développement ne peut pas accéder à l’environnement de production)
+	Prise en charge des conteneurs Windows → 
+		Si vous disposez d’applications .NET Framework héritées
+
+# Create AKS dengan Azure CNI + Network Policy (Calico)
+az aks create \
+  --resource-group rg-kubernetes \
+  --name aks-prod-cluster \
+  --network-plugin azure \
+  --network-policy calico \
+  --vnet-subnet-id /subscriptions/xxx/resourceGroups/rg-application/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/subnet-aks \
+  --service-cidr 10.0.100.0/24 \
+  --dns-service-ip 10.0.100.10 \
+  --node-count 3
+
+Network Architecture Detail=
+
+#  Exemple : le pod peut résoudre directement l'endpoint SQL privé
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-network
+  namespace: production
+spec:
+  containers:
+  - name: test
+    image: mcr.microsoft.com/dotnet/samples:aspnetapp
+    command: ["/bin/sh", "-c", "sleep 3600"]
+    
+# Depuis cette capsule, tu peux :
+# ping 10.0.2.5 (SQL Private Endpoint IP)
+# nslookup sql-prod.database.windows.net (resolve ke private IP)
+
+
+Network Policies (Micro-segmentation)=
+
+# Deny all traffic between namespace except allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cross-namespace
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: production  # just pod from namespace production can go inside
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx  # Ingress controller can go inside
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: production
+  - to:  # Allow DNS
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+
+====================
+
+
+🚪 PARTIE 2: INGRESS ARCHITECTURE
+
+Sur l'image précédente, on voit un Public Load Balancer → qui se trouve au niveau d'Azure. Mais pour K8s, il te faut un Ingress Controller dans le cluster.
+
+le choix Ingress dans Azure:
+Opsi A: NGINX Ingress Controller (Open Source)
+
+
+# Install via Helm
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.replicaCount=2 \
+  --set controller.nodeSelector."kubernetes\.io/os"=linux \
+  --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux
+Opsi B: Application Gateway Ingress Controller (AGIC) - Azure Native
+
+
+# Enable AGIC add-on (recommended for enterprise)
+az aks enable-addons \
+  --name aks-prod-cluster \
+  --resource-group rg-kubernetes \
+  --addons ingress-appgw \
+  --appgw-name appgw-prod \
+  --appgw-subnet-id $APPGW_SUBNET_ID
+
+--***--
+
+Ingress YAML Configuration
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  namespace: production
+  annotations:
+    # Kalau pakai NGINX
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Kalau pakai AGIC
+    # kubernetes.io/ingress.class: azure/application-gateway
+spec:
+  ingressClassName: nginx  # atau azure/application-gateway
+  tls:
+  - hosts:
+    - api.company.com
+    - web.company.com
+    secretName: tls-secret  # Di-manage cert-manager atau Azure Key Vault CSI
+  rules:
+  - host: web.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-frontend
+            port:
+              number: 80
+  - host: api.company.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api-backend
+            port:
+              number: 8080
+
+--***--
+
+SSL/TLS Management dengan cert-manager
+
+
+# ClusterIssuer untuk Let's Encrypt (automated SSL)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@company.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+=================
+
+🎛️ PARTIE 3: HELM - PACKAGE MANAGEMENT
+
+Structure Helm Chart pour l'application illustrée ci-dessus (application Web + API + tâche en arrière-plan) :
+
+
+
+myapp-chart/
+├── Chart.yaml
+├── values.yaml              # Default values
+├── values-production.yaml   # Override untuk production
+├── values-staging.yaml      # Override untuk staging
+└── templates/
+    ├── _helpers.tpl
+    ├── deployment.yaml
+    ├── service.yaml
+    ├── ingress.yaml
+    ├── secretproviderclass.yaml  # Untuk Azure Key Vault integration
+    └── hpa.yaml               # Horizontal Pod Autoscaler
+
+
+
+values-production.yaml ==
+
+# Environment specific values
+environment: production
+replicaCount: 3
+
+image:
+  repository: myacr.azurecr.io/myapp
+  tag: v1.2.3
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: app.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: app-tls
+      hosts:
+        - app.company.com
+
+# Azure Key Vault Integration
+keyvault:
+  name: kv-prod-secrets
+  tenantId: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  secrets:
+    - sql-connection-string
+    - redis-password
+    - api-key
+
+# Resource limits (penting untuk multi-tenant cluster)
+resources:
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+  requests:
+    cpu: "200m"
+    memory: "256Mi"
+
+# HPA - Auto scaling
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget (untuk maintenance tanpa downtime)
+pdb:
+  enabled: true
+  minAvailable: 2
+
+---***---
+
+Deployment Template dengan Key Vault CSI
+
+# templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myapp.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "myapp.name" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "myapp.name" . }}
+      annotations:
+        # Rollout restart kalau secret di Key Vault berubah
+        checksum/config: {{ include (print $.Template.BasePath "/secretproviderclass.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: 80
+        env:
+        - name: SQL_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "myapp.fullname" . }}-secrets
+              key: sql-connection-string
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: {{ include "myapp.fullname" . }}-azure-kv
+
+===================
+
+
+🔐 PARTIE 4: AZURE INTEGRATION (Key Vault & SQL)
+
+A. Azure Key Vault Integration (Secrets Store CSI Driver)
+
+Step 1: Install CSI Driver
+
+helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+  --namespace kube-system \
+  --set syncSecret.enabled=true  # Penting: sync ke K8s secret untuk env vars
+
+Step 2: Azure Workload Identity (Modern way - gantiin Pod Identity)
+
+# Enable OIDC issuer di AKS (prerequisite untuk Workload Identity)
+az aks update \
+  --name aks-prod-cluster \
+  --resource-group rg-kubernetes \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+# Create Service Account dengan annotation
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: ${USER_ASSIGNED_CLIENT_ID}
+  name: myapp-sa
+  namespace: production
+EOF
+
+
+Step 3: SecretProviderClass
+
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: myapp-azure-kv
+  namespace: production
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "false"
+    clientID: ${USER_ASSIGNED_CLIENT_ID}  # Workload Identity Client ID
+    keyvaultName: kv-prod-secrets
+    cloudName: AzurePublicCloud
+    objects: |
+      array:
+        - |
+          objectName: sql-connection-string
+          objectType: secret
+        - |
+          objectName: api-key
+          objectType: secret
+        - |
+          objectName: tls-cert
+          objectType: secret
+    tenantId: ${AZURE_TENANT_ID}
+  
+  # Sync ke Kubernetes Secret (agar bisa pakai env var)
+  secretObjects:
+  - secretName: myapp-secrets
+    type: Opaque
+    data:
+    - objectName: sql-connection-string
+      key: connection-string
+    - objectName: api-key
+      key: api-key
+
+---***---
+
+B. Azure SQL Connection dengan Managed Identity
+csharp
+
+// Contoh code .NET di container untuk connect ke Azure SQL
+// using Azure.Identity;
+// using Microsoft.Data.SqlClient;
+
+string connectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING");
+// Connection string format:
+// Server=tcp:sql-prod.database.windows.net,1433;Database=appdb;Authentication=Active Directory Managed Identity;
+
+// Atau pakai DefaultAzureCredential untuk flexibility
+var credential = new DefaultAzureCredential();
+var token = await credential.GetTokenAsync(
+    new Azure.Core.TokenRequestContext(new[] { "https://database.windows.net/.default" }));
+
+using var connection = new SqlConnection(connectionString);
+connection.AccessToken = token.Token;
+await connection.OpenAsync();
+
+---***---
+
+C. Private Endpoint Architecture (SQL)
+
+# NetworkPolicy just for  allow egress to SQL Private Endpoint
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-sql-only
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: myapp
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.0.2.0/24  # Subnet SQL Private Endpoint
+    ports:
+    - protocol: TCP
+      port: 1433  # SQL Server port
+  - to:  # Allow DNS tetap
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+
+
+===================
+
+📊  PARTIE 5: MONITORING INTEGRATION (Operational Insights)
+
+
+# PodMonitor for scrape metrics (Prometheus + Azure Monitor)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: myapp-metrics
+  namespace: production
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+  podMetricsEndpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+---
+# Network Policy untuk allow Prometheus scraping
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+
+===================
+
+
+🎯 LISTE DE VÉRIFICATION DU DÉPLOIEMENT
+Copiez-collez ceci dans votre terminal pour suivre la progression :
+
+cat << “EOF” > k8s-deployment-checklist.md
+# Liste de vérification du déploiement de Kubernetes sur Azure
+
+## Avant le déploiement
+- [ ] Réseau virtuel (VNet) et sous-réseau AKS créés (Azure CNI, /16 minimum)
+- [ ] Azure Key Vault créé avec un point de terminaison privé
+- [ ] Azure SQL avec un point de terminaison privé et un accès via une identité gérée
+- [ ] ACR (Azure Container Registry) créé et associé à AKS
+- [ ] Espace de travail Log Analytics créé
+
+## Configuration du cluster AKS
+- [ ] AKS créé avec Azure CNI + politique de réseau (Calico)
+- [ ] Identité de charge de travail activée (émetteur OIDC)
+- [ ] Pools de nœuds : système (critique) + utilisateur (applications) séparés
+- [ ] Auto-scaler activé (cluster + nœud)
+- [ ] Container Insights activé (Azure Monitor)
+
+## Renforcement de la sécurité
+- [ ] Workload Identity configurée pour toutes les applications
+- [ ] Pilote CSI de Secrets Store installé
+- [ ] Politiques réseau : refus par défaut, autorisation spécifique
+- [ ] Normes de sécurité des pods : restreintes
+- [ ] RBAC : intégration Azure AD activée
+
+
+## Déploiement de l'application
+- [ ] Charts Helm créés avec des valeurs spécifiques à chaque environnement
+- [ ] Ingress configuré (NGINX ou AGIC) avec terminaison SSL
+- [ ] cert-manager pour la gestion automatisée des certificats
+- [ ] HPA configuré pour la mise à l'échelle automatique des pods
+- [ ] PDB (Pod Disruption Budget) pour des mises à jour sans interruption de service
+
+## Intégration
+- [ ] Secrets Key Vault accessibles via le pilote CSI
+- [ ] Connectivité Azure SQL testée depuis le pod
+- [ ] Classes de stockage configurées (Premium SSD pour la base de données, Standard pour les journaux)
+- [ ] Sauvegarde : Velero configuré pour les ressources du cluster
+
+EOF
+cat k8s-deployment-checklist.md
+
+
+====================
+
+
+Prochaines étapes :
+
+Tu peux commencer par :
+	phase 1 :  (VNet + AKS avec Azure CNI)
+	Phase 2 : configuration de Workload Identity + Key Vault CSI (c'est la partie la plus délicate)
+	Phase 3 : déploiement de l'application avec Helm
+
+*************
+
+🔥 PARTIE A : RÉSEAU AZURE CNI (Le cauchemar de l’épuisement des adresses IP)
+Pourquoi est-ce compliqué ?
+Azure CNI diffère des autres CNI (Calico, Cilium sur site). Avec Azure CNI :
+
+Chaque pod reçoit une adresse IP directement du sous-réseau Azure (et non une adresse IP interne au cluster)
+Les adresses IP sont une ressource limitée au sein du réseau virtuel
+Si les adresses IP sont épuisées, les pods ne peuvent pas démarrer (statut : FailedScheduling)
+Calculs relatifs aux adresses IP à bien comprendre
+
+
+FORMULE DE CALCUL DU SOUS-RÉSEAU AKS :
+┌──---──────────────────────────────────────────────────────────----─┐
+│ Nombre total d’adresses IP requises = (Nombre de nœuds × 1) 	     |
+| + (Nombre de pods par nœud × Nombre de nœuds) + (Marge de 20 %)    │
+│                                                                    │
+│ Exemple :                                                          │
+│ - Nombre de nœuds : 10                                             │
+│ - Nombre maximal de pods par nœud : 30 (valeur par défaut d’AKS)   |                      │
+│ - Nombre d’adresses IP requises : 10 + (10 × 30) = 310 adresses IP |                       │
+│ - Sous-réseau minimal : /23 (512 adresses IP) ou /24 (256          |
+|   adresses IP, ce qui est trop juste)				     │
+└────────────────────────────────────────────────────────────-------─┘
+
+Problème réel : si tu passes de 10 nœuds à 20 nœuds, mais que le sous-réseau n’est qu’un /24 (256 adresses IP), tu vas te retrouver bloqué !
+
+
+# Vérifier la disponibilité des adresses IP dans le sous-réseau (important avant de passer à l’échelle supérieure !)
+
+az network vnet subnet show \
+  --resource-group rg-application \
+  --vnet-name vnet-prod \
+  --name subnet-aks \
+  --query « availableIpAddresses » -o tsv
+
+# Vérification des adresses IP déjà utilisées dans le cluster
+kubectl get nodes -o json | jq -r “.items[].spec.podCIDR”
+kubectl get pods -A -o wide | wc -l  # Nombre total de pods
+
+***************
+
+Architecture Deep Dive: CNI Chain =
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    AZURE CNI DATA FLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Pod (10.240.0.10)                                              │
+│     │                                                           │
+│     ▼                                                           │
+│  eth0 (virtual NIC) ───────┐                                    │
+│     │                      │                                    │
+│     ▼                      │                                    │
+│  Linux Network Namespace   │  <- (isolation)                    │
+│     │                      │                                    │
+│     ▼                      │                                    │
+│  Azure CNI Plugin          │  ← /opt/cni/bin/azure-vnet         │
+│     │                      │     (binary yang assign IP)        │
+│     ▼                      │                                    │
+│  Azure Virtual Network ────┘  ← Bridge ke VMSS NIC              │
+│     │                                                           │
+│     ▼                                                           │
+│  Azure Virtual Network (VNet) 10.240.0.0/16                     │
+│     │                                                           │
+│     ├──────────┬──────────┬──────────┐                          │
+│     ▼          ▼          ▼          ▼                          │
+│  Pod-1      Pod-2      Pod-3     SQL Private Endpoint           │
+│  10.240.0.4 10.240.0.5 10.240.0.6    10.0.2.5                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+************
+
+Setup with Custom Pod CIDR (Advanced) =
+
+# Créer un grand sous-réseau à partir de zéro (/20 = 4096 IP)
+
+az network vnet subnet create \
+  --resource-group rg-application \
+  --vnet-name vnet-prod \
+  --name subnet-aks-large \
+  --address-prefixes 10.240.0.0/20 \
+  --service-endpoints Microsoft.Sql Microsoft.Storage Microsoft.AzureActiveDirectory
+
+# Déployer AKS avec un nombre maximal de pods par nœud optimisé
+
+az aks create \
+  --resource-group rg-kubernetes \
+  --name aks-prod \
+  --network-plugin azure \
+  --network-policy calico \
+  --vnet-subnet-id "/subscriptions/.../subnet-aks-large" \
+  --max-pods 50 \
+  --node-count 3 \
+  --enable-cluster-autoscaler \
+  --min-count 3 \
+  --max-count 20
+
+# Note: Le nombre de Max-pods doit être défini lors de la création du pool de nœuds ; il ne peut pas être modifié !
+
+
+***********
+
+Troubleshooting: IP Exhaustion
+Symptom: Pod stuck di ContainerCreating
+
+# Diagnose
+kubectl describe pod <name-pod>
+
+# Error:
+# "Failed to create sandbox: failed to setup network for sandbox: 
+#  failed to allocate for range 0: no IP addresses available in range set: 
+#  10.240.0.1-10.240.0.254/24
+
+# Solution : redimensionner le sous-réseau (s'il reste de l'espace dans le réseau virtuel) ou créer un nouveau pool de nœuds dans un autre sous-réseau
+# Mais le redimensionnement du sous-réseau AKS implique la recréation du cluster (temps d'indisponibilité !), il faut donc bien planifier l'opération
+
+*********
+
+Prevention:
+
+# Politique réseau visant à limiter la consommation d'adresses IP
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  # Ça te permet de savoir quel pod consomme le plus de bande passante ou de connexion
+
+
+===================
+
+
+🔥 PARTIE B : WORKLOAD IDENTITY (Federation Magic)
+Évolution : de Pod Identity à Workload Identity
+text
+
+CHRONOLOGIE :
+2019-2021 : AAD Pod Identity (obsolète, problème de sécurité)
+2022-aujourd’hui : Azure Workload Identity (natif, utilise OIDC)
+
+Pourquoi ce changement ?
+┌──────────────────────┬────────────────────────--------┐
+│ AAD Pod Identity     │ Azure Workload Identity	│
+├──────────────────────┼────────────────────────--------┤
+│ DaemonSet (lourd)    │ K8s natif (léger)		│
+│ Nécessite des pods MIC/NMI   │ Échange de jetons OIDC │
+│ Plus lent         │ Authentification instantanée      │
+│ Complexité de la sécurité  │ Flux OIDC standard       │
+└──────────────────────┴────────────────────────--------┘
+Fonctionnement (La magie expliquée)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FLUX D'IDENTITÉ DE LA CHARGE DE TRAVAIL          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. Le cluster AKS dispose d’une URL d’émetteur OIDC :              │
+│     https://oidc.prod-aks.westeurope.azmk8s.io/...                  │
+│                                                                     │
+│  2. Le compte de service dans K8s est annoté avec l’ID client :     │
+│     azure.workload.identity/client-id: <ID d'identité gérée>        │
+│                                                                     │
+│  3. Le pod est en cours d'exécution, Kubernetes projette le jeton du| 
+|     compte de service vers le pod :   			      │
+│     /var/run/secrets/azure/tokens/azure-identity-token              |
+|                                                                     |
+│  4. Aplikasi panggil Azure SDK/MSAL:                                │
+│     "Give me token for Key Vault"                                   │
+│                                                                     │
+│  5. Azure AD verify:                                                │
+│     - Is token dari issuer yang valid? (OIDC discovery)             │
+│     - Is subject (service account) allowed for this Client ID?      │
+│     - Issue Azure AD Access Token                                   │
+│                                                                     │
+│  6. Aplikasi pakai token akses Key Vault/SQL/Storage                │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+**************
+
+Step-by-Step Setup (Copy-Paste Ready)
+Step 1: Enable OIDC di AKS
+
+# Enable OIDC issuer (just one time setup)
+az aks update \
+  --name aks-prod-cluster \
+  --resource-group rg-kubernetes \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+# Simpan OIDC Issuer URL (important!)
+export AKS_OIDC_ISSUER="$(az aks show \
+  --name aks-prod-cluster \
+  --resource-group rg-kubernetes \
+  --query "oidcIssuerProfile.issuerUrl" -o tsv)"
+
+echo $AKS_OIDC_ISSUER
+# Output: https://oidc.prod-aks.westeurope.azmk8s.io/...
+                                   
+**************
+
+Step 2: Create Managed Identity & Federation
+
+# 1. Make User Assigned Managed Identity
+az identity create \
+  --name id-aks-keyvault-reader \
+  --resource-group rg-management \
+  --location westeurope
+
+export USER_ASSIGNED_CLIENT_ID="$(az identity show \
+  --name id-aks-keyvault-reader \
+  --resource-group rg-management \
+  --query 'clientId' -otsv)"
+
+# 2. Make Service Account at K8s
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: ${USER_ASSIGNED_CLIENT_ID}
+  name: keyvault-reader-sa
+  namespace: production
+EOF
+
+# 3. Federation: conneted to Managed Identity with OIDC
+export SERVICE_ACCOUNT_ISSUER=$AKS_OIDC_ISSUER
+export SERVICE_ACCOUNT_SUBJECT="system:serviceaccount:production:keyvault-reader-sa"
+
+az identity federated-credential create \
+  --name keyvault-federated-cred \
+  --identity-name id-aks-keyvault-reader \
+  --resource-group rg-management \
+  --issuer ${SERVICE_ACCOUNT_ISSUER} \
+  --subject ${SERVICE_ACCOUNT_SUBJECT} \
+  --audiences api://AzureADTokenExchange
+Step 3: Grant Access ke Key Vault
+Bash
+
+# Give acces Managed Identity to Key Vault
+az keyvault set-policy \
+  --name kv-prod-secrets \
+  --secret-permissions get list \
+  --spn ${USER_ASSIGNED_CLIENT_ID}
+
+---***---
+Step 4: Deploy Pod with Workload Identity
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+        # Label important: this trigger mutation webhook for inject token
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: keyvault-reader-sa  # would the same with step 2
+      containers:
+      - name: myapp
+        image: mcr.microsoft.com/azure-cli:latest
+        command: ["/bin/sh", "-c", "sleep 3600"]
+        env:
+        - name: AZURE_CLIENT_ID
+          value: ${USER_ASSIGNED_CLIENT_ID}  # Client ID from step 2
+        # Volume token outomatic mounted by mutating webhook
+        volumeMounts:
+        - name: azure-identity-token
+          mountPath: /var/run/secrets/azure/tokens
+          readOnly: true
+      volumes:
+      - name: azure-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: azure-identity-token
+              expirationSeconds: 3600  # Token refresh otomatis
+              audience: api://AzureADTokenExchange
+
+*******************************---------
+
+
+Debugging Workload Identity (The Pain Points)
+Issue 1: "WorkloadIdentityCredential: unable to resolve an endpoint"
+
+# Cek apakah OIDC issuer beneran enable
+az aks show -n aks-prod -g rg-kubernetes --query "oidcIssuerProfile.enabled"
+
+# Cek federation subject match (sering typo!)
+az identity federated-credential list \
+  --identity-name id-aks-keyvault-reader \
+  --resource-group rg-management \
+  --query "[].{name:name, issuer:issuer, subject:subject}"
+
+# Pastikan issuer URL eksak sama (https:// vs trailing slash matters!)
+Issue 2: Service Account Label Missing
+Bash
+
+# Cek label di pod (must be azure.workload.identity/use: "true")
+kubectl get pod <pod-name> -n production -o jsonpath='{.metadata.labels}'
+
+# Cek is this mutating webhook are working ?
+kubectl get mutatingwebhookconfigurations | grep workload-identity
+
+# Cek logs webhook (if there is issue)
+kubectl logs -n azure-workload-identity-system -l app=azure-workload-identity-webhook
+Issue 3: Token not found in pod
+Bash
+
+# Exec to pod and check
+kubectl exec -it <pod-name> -n production -- /bin/sh
+ls -la /var/run/secrets/azure/tokens/
+
+# there is must be a file: azure-identity-token
+
+# Cek isi token (decode JWT)
+cat /var/run/secrets/azure/tokens/azure-identity-token | cut -d '.' -f 2 | base64 -d 2>/dev/null | jq .
+# Cek "aud", "sub", "iss" sesuai federation config
+Complete Test Script
+
+cat <<'EOF' > test-workload-identity.sh
+#!/bin/bash
+# Script buat test Workload Identity dari dalam pod
+
+echo "=== Testing Azure Workload Identity ==="
+
+# 1. Check environment variables
+echo "AZURE_CLIENT_ID: $AZURE_CLIENT_ID"
+echo "AZURE_TENANT_ID: $AZURE_TENANT_ID"
+
+# 2. Check token file exists
+TOKEN_FILE="/var/run/secrets/azure/tokens/azure-identity-token"
+if [ -f "$TOKEN_FILE" ]; then
+    echo "✓ Token file exists"
+    echo "Token expiry check:"
+    cat $TOKEN_FILE | cut -d '.' -f 2 | base64 -d 2>/dev/null | jq '.exp | todate'
+else
+    echo "✗ Token file NOT found!"
+    exit 1
+fi
+
+# 3. Try to get Azure AD token (using curl)
+echo "Requesting AAD token for Key Vault..."
+AAD_TOKEN=$(curl -s -X POST "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=$AZURE_CLIENT_ID" \
+  -d "scope=https://vault.azure.net/.default" \
+  -d "client_assertion=$(cat $TOKEN_FILE)" \
+  -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
+  -d "grant_type=client_credentials" | jq -r '.access_token')
+
+if [ "$AAD_TOKEN" != "null" ] && [ -n "$AAD_TOKEN" ]; then
+    echo "✓ Successfully got AAD token!"
+    echo "Token preview: ${AAD_TOKEN:0:50}..."
+else
+    echo "✗ Failed to get AAD token"
+    exit 1
+fi
+
+# 4. Try to access Key Vault
+echo "Accessing Key Vault..."
+KEYVAULT_NAME="kv-prod-secrets"
+SECRET_NAME="test-secret"
+
+RESULT=$(curl -s -H "Authorization: Bearer $AAD_TOKEN" \
+  "https://$KEYVAULT_NAME.vault.azure.net/secrets/$SECRET_NAME?api-version=7.3")
+
+if echo "$RESULT" | grep -q "value"; then
+    echo "✓ Successfully accessed Key Vault!"
+    echo "Secret value: $(echo $RESULT | jq -r '.value')"
+else
+    echo "✗ Failed to access Key Vault"
+    echo "Error: $RESULT"
+fi
+EOF
+
+
+chmod +x test-workload-identity.sh
+kubectl cp test-workload-identity.sh <pod-name>:/tmp/ -n production
+kubectl exec -it <pod-name> -n production -- /tmp/test-workload-identity.sh
+
+
+***********************
+
+Comparaison: Workload Identity vs Alternative
+
+
+┌──────────────────────┬──────────────────────┬──────────────────────┐
+│     Method           │     Pros             │     Cons             │
+├──────────────────────┼──────────────────────┼──────────────────────┤
+│ Workload Identity    │ Native, secure,      │ Setup kompleks       │
+│ (Recommended)        │ no secrets in K8s    │ OIDC dependency      │
+├──────────────────────┼──────────────────────┼──────────────────────┤
+│ AAD Pod Identity     │ (DEPRECATED)         │ dont use it!         │
+├──────────────────────┼──────────────────────┼──────────────────────┤
+│ Service Principal    │ easy to setup        │ Secret expiry,       │
+│ (Client Secret)      │                      │ rotation manual      │
+├──────────────────────┼──────────────────────┼──────────────────────┤
+│ VM Managed Identity  │ no need to setup     │ all pod at node      │
+│ (Node level)         │                      │ have acces the same! │
+└──────────────────────┴──────────────────────┴──────────────────────┘
+
+
+*********************
+
+Checklist Production Ready
+
+cat <<'EOF' > workload-identity-checklist.txt
+□ OIDC Issuer enabled di AKS
+□ Managed Identity created (User Assigned)
+□ Federated Credential created dengan Subject yang exact match
+□ Service Account punya annotation azure.workload.identity/client-id
+□ Pod punya label azure.workload.identity/use: "true"
+□ Service Account Name di pod spec sama dengan yang di federated credential
+□ RBAC Key Vault/Resource sudah di-assign ke Managed Identity
+□ Token volume mounted di /var/run/secrets/azure/tokens
+□ Aplikasi menggunakan Azure SDK terbaru yang support Workload Identity
+□ NetworkPolicy allow egress ke login.microsoftonline.com (for token exchange)
+EOF
+
+cat workload-identity-checklist.txt
+
+
+*****************
+
+Conclusion :
+
+Azure CNI : la planification du sous-réseau est essentielle. Si vous choisissez une taille inadaptée, votre cluster de production sera hors service et devra être reconstruit. Utilisez toujours un sous-réseau /20 ou plus grand pour la production.
+
+Workload Identity : la configuration est complexe au début (nombreux composants : OIDC, fédération, SA, étiquettes), mais une fois opérationnelle, c’est la solution la plus sécurisée. Le débogage doit se concentrer sur les revendications des jetons JWT et la correspondance des entités de fédération.
